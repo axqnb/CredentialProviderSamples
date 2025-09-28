@@ -61,8 +61,11 @@ class CSampleProvider : public ICredentialProvider
     friend HRESULT CSample_CreateInstance(__in REFIID riid, __deref_out void** ppv);
 
     // 获取注册表操作函数--0313
+    //用户获取上次登录的用户名,已经子账号，改密标志
     HRESULT _ReadSavedUsername();
-
+    HRESULT _ReadSavedRemoteUsername();
+    HRESULT _ReadSavedSubAccount();
+    BOOL    _ReadChangePasswordFromRegistry();
   protected:
     CSampleProvider();
     __override ~CSampleProvider();
@@ -76,7 +79,14 @@ private:
     DWORD                                   _dwCredUIFlags;
     KERB_INTERACTIVE_UNLOCK_LOGON*          _pkiulSetSerialization;
     
-    // 添加以下成员变量---0313
+    //用户保存上次登录的用户名（本地和远程）
     WCHAR _wszSavedUsername[MAX_PATH];
     bool  _bHasSavedUsername;
+
+    WCHAR _wszSavedRemoteUsername[MAX_PATH];
+    bool  _bHasSavedRemoteUsername;
+
+    //用户保存上次登录的子账号
+    WCHAR _wszSavedSubAccount[MAX_PATH];
+    bool  _bHasSavedSubAccount;
 };

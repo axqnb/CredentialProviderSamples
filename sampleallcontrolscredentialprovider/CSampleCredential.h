@@ -89,15 +89,17 @@ public:
                        __in const CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR* rgcpfd,
                        __in const FIELD_STATE_PAIR* rgfsp,
                        __in DWORD dwFlags,
-                       __in_opt PCWSTR wszUsername);
+                       __in_opt PCWSTR wszUsername,
+                       __in_opt PCWSTR wszSubAccount);
     CSampleCredential();
 
     virtual ~CSampleCredential();
   
 public:
-    HRESULT _SaveUsernameToRegistry(__in PCWSTR wszUsername);
-    
-
+    HRESULT _SaveUsernameToRegistry(__in PCWSTR wszKeyName, __in PCWSTR wszUsername);
+    HRESULT _SaveRemoteUsernameToRegistry(__in PCWSTR wszUsername);
+    HRESULT _SaveChangePasswordToRegistry(__in BOOL isChangePassword);
+    HRESULT _ChangePassword(__in PWSTR pszDomain, __in PWSTR pszUsername, __in PWSTR oldPassword, __in PWSTR newPassword);
   private:
     DWORD                                   _dwFlags;                                      // The flags representing the Credui Options
     LONG                                    _cRef;
@@ -123,7 +125,8 @@ public:
     BOOL                                    _bChecked;                                      // Tracks the state of our 
                                                                                             // checkbox.
 
-    DWORD                                   _dwComboIndex;                                  // Tracks the current index                                                                                       // of our combobox.
+    DWORD                                   _dwComboIndex;                                  // Tracks the current index
+                                                                                            // of our combobox.
 };
 
 //¼ì²â²»µ½¿¨Æ¬ËøÆÁ

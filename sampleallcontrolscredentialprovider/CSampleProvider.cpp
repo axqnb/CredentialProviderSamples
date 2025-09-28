@@ -23,9 +23,13 @@
 
 CSampleProvider::CSampleProvider():
     _cRef(1),
-    _bHasSavedUsername(FALSE)
+    _bHasSavedUsername(FALSE),
+    _bHasSavedRemoteUsername(FALSE),
+    _bHasSavedSubAccount(FALSE)
 {
     ZeroMemory(_wszSavedUsername, sizeof(_wszSavedUsername));
+    ZeroMemory(_wszSavedRemoteUsername, sizeof(_wszSavedRemoteUsername));
+    ZeroMemory(_wszSavedSubAccount, sizeof(_wszSavedSubAccount));
 
     DllAddRef();
 
@@ -52,7 +56,11 @@ HRESULT CSampleProvider::SetUsageScenario(
 {
     UNREFERENCED_PARAMETER(dwFlags);
     HRESULT hr;
-
+    //OutputDebugString(L"CSampleProvider::SetUsageScenario");
+    if (_ReadChangePasswordFromRegistry()) {
+        cpus = CPUS_CHANGE_PASSWORD;
+        //OutputDebugString(L"cpus == CPUS_CHANGE_PASSWORD;");
+    }
     // Decide which scenarios to support here. Returning E_NOTIMPL simply tells the caller
     // that we're not designed for that scenario.
     //登录场景
@@ -69,21 +77,26 @@ HRESULT CSampleProvider::SetUsageScenario(
         //创建并初始化凭证。
         //更高级的credprov可能只枚举拥有锁的用户的磁片
         //会话，因为这些是唯一的信用将工作
-   
-        // 读取保存的用户名
         _ReadSavedUsername();
-
+        _ReadSavedSubAccount();
+        _ReadSavedRemoteUsername();
         _pCredential = new CSampleCredential();
         if (_pCredential != NULL)
         {
-            PCWSTR wszPrepopulatedUsername = _bHasSavedUsername ? _wszSavedUsername : L"";
-
+            PCWSTR wszPrepopulatedUsername = L"";
+            PCWSTR wszPrepopulatedSubAccount = L"";
             if (cpus == CPUS_CREDUI)
             {
                 _dwCredUIFlags = dwFlags;  // currently the only flags ever passed in are only valid for the credui scenario
-                wszPrepopulatedUsername = L"";
+                wszPrepopulatedUsername = _bHasSavedRemoteUsername ? _wszSavedRemoteUsername : L"";
+                wszPrepopulatedSubAccount = _bHasSavedSubAccount ? _wszSavedSubAccount : L"";
             }
-            hr = _pCredential->Initialize(_cpus, s_rgCredProvFieldDescriptors, s_rgFieldStatePairs, _dwCredUIFlags, wszPrepopulatedUsername);
+            else {
+                wszPrepopulatedUsername = _bHasSavedUsername ? _wszSavedUsername : L"";
+                wszPrepopulatedSubAccount = _bHasSavedSubAccount ? _wszSavedSubAccount : L"";
+            }
+
+            hr = _pCredential->Initialize(_cpus, s_rgCredProvFieldDescriptors, s_rgFieldStatePairs, _dwCredUIFlags, wszPrepopulatedUsername, wszPrepopulatedSubAccount);
             if (FAILED(hr))
             {
                 _pCredential->Release();
@@ -97,8 +110,30 @@ HRESULT CSampleProvider::SetUsageScenario(
         break;
 
     case CPUS_CHANGE_PASSWORD:
-    //case CPUS_CREDUI:
-        hr = E_NOTIMPL;
+        //OutputDebugString(L"CSampleProvider_CPUS_CHANGE_PASSWORD");
+        _cpus = cpus;
+        _ReadSavedUsername();
+        _ReadSavedSubAccount();
+        _pCredential = new CSampleCredential();
+        if (_pCredential != NULL)
+        {
+            PCWSTR wszPrepopulatedUsername = L"";
+            PCWSTR wszPrepopulatedSubAccount = L"";
+            _dwCredUIFlags = dwFlags;
+            wszPrepopulatedUsername = _bHasSavedUsername ? _wszSavedUsername : L"";
+            wszPrepopulatedSubAccount = _bHasSavedSubAccount ? _wszSavedSubAccount : L"";
+
+            hr = _pCredential->Initialize(_cpus, s_rgCredProvFieldDescriptors, s_rgFieldStatePairs, _dwCredUIFlags, wszPrepopulatedUsername, wszPrepopulatedSubAccount);
+            if (FAILED(hr))
+            {
+                _pCredential->Release();
+                _pCredential = NULL;
+            }
+        }
+        else
+        {
+            hr = E_OUTOFMEMORY;
+        }
         break;
 
     default:
@@ -151,6 +186,7 @@ HRESULT CSampleProvider::SetSerialization(
     __in const CREDENTIAL_PROVIDER_CREDENTIAL_SERIALIZATION* pcpcs
     )
 {
+    //OutputDebugString(L"CSampleProvider_SetSerialization");
     UNREFERENCED_PARAMETER(pcpcs);
     return E_NOTIMPL;
 }
@@ -262,6 +298,7 @@ HRESULT CSampleProvider::Advise(
     __in UINT_PTR upAdviseContext
     )
 {
+    //OutputDebugString(L"CSampleProvider_Advise");
     UNREFERENCED_PARAMETER(pcpe);
     UNREFERENCED_PARAMETER(upAdviseContext);
 
@@ -271,6 +308,7 @@ HRESULT CSampleProvider::Advise(
 // Called by LogonUI when the ICredentialProviderEvents callback is no longer valid.
 HRESULT CSampleProvider::UnAdvise()
 {
+    //OutputDebugString(L"CSampleProvider_UnAdvise");
     return E_NOTIMPL;
 }
 
@@ -287,6 +325,7 @@ HRESULT CSampleProvider::GetFieldDescriptorCount(
     __out DWORD* pdwCount
     )
 {
+    //OutputDebugString(L"CSampleProvider_GetFieldDescriptorCount");
     *pdwCount = SFI_NUM_FIELDS;
     return S_OK;
 }
@@ -297,6 +336,7 @@ HRESULT CSampleProvider::GetFieldDescriptorAt(
     __deref_out CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR** ppcpfd
     )
 {    
+    //OutputDebugString(L"CSampleProvider_GetFieldDescriptorAt");
     HRESULT hr;
 
     // Verify dwIndex is a valid field.
@@ -332,6 +372,7 @@ HRESULT CSampleProvider::GetCredentialCount(
     __out BOOL* pbAutoLogonWithDefault
     )
 {
+    //OutputDebugString(L"CSampleProvider_GetCredentialCount");
     *pdwCount = 1;
     *pdwDefault = 0;
     *pbAutoLogonWithDefault = FALSE;
@@ -346,6 +387,7 @@ HRESULT CSampleProvider::GetCredentialAt(
     __deref_out ICredentialProviderCredential** ppcpc
     )
 {
+    //OutputDebugString(L"CSampleProvider_GetCredentialAt");
     HRESULT hr;
     if((dwIndex == 0) && ppcpc)
     {
@@ -363,6 +405,7 @@ HRESULT CSampleProvider::GetCredentialAt(
 //创建我们的提供程序的样板代码
 HRESULT CSample_CreateInstance(__in REFIID riid, __deref_out void** ppv)
 {
+    //OutputDebugString(L"CSample_CreateInstance");
     HRESULT hr;
 
     CSampleProvider* pProvider = new CSampleProvider();
@@ -380,7 +423,7 @@ HRESULT CSample_CreateInstance(__in REFIID riid, __deref_out void** ppv)
     return hr;
 }
 
-// 读取注册表中的用户名
+// 读取注册表中的用户名(本地登录)
 HRESULT CSampleProvider::_ReadSavedUsername()
 {
     HKEY hKey;
@@ -416,5 +459,124 @@ HRESULT CSampleProvider::_ReadSavedUsername()
         }
     }
     _bHasSavedUsername = false;
+    return S_FALSE;
+}
+
+// 读取注册表中的用户名(远程登录)
+HRESULT CSampleProvider::_ReadSavedRemoteUsername()
+{
+    HKEY hKey;
+    DWORD dwType = REG_SZ;
+    WCHAR wszUsername[MAX_PATH] = { 0 };
+    DWORD cbData = sizeof(wszUsername);
+
+    LSTATUS status = RegOpenKeyExW(
+        HKEY_LOCAL_MACHINE,
+        L"SOFTWARE\\Softdomain\\LoginWhitelist",
+        0,
+        KEY_READ,
+        &hKey
+    );
+
+    if (status == ERROR_SUCCESS)
+    {
+        status = RegQueryValueExW(
+            hKey,
+            L"LastRemoteUsername",
+            NULL,
+            &dwType,
+            (LPBYTE)wszUsername,
+            &cbData
+        );
+        RegCloseKey(hKey);
+
+        if (status == ERROR_SUCCESS)
+        {
+            StringCchCopyW(_wszSavedRemoteUsername, ARRAYSIZE(_wszSavedRemoteUsername), wszUsername);
+            _bHasSavedRemoteUsername = true;
+            return S_OK;
+        }
+    }
+    _bHasSavedRemoteUsername = false;
+    return S_FALSE;
+}
+
+// 从注册表读取 ChangePassword 标志（返回 BOOL）
+BOOL CSampleProvider::_ReadChangePasswordFromRegistry()
+{
+    HKEY hKey;
+    LSTATUS status;
+    DWORD dwValue = 0;
+    DWORD dwSize = sizeof(DWORD);
+
+    // 1. 打开注册表项
+    status = RegOpenKeyExW(
+        HKEY_LOCAL_MACHINE,
+        L"SOFTWARE\\Softdomain\\LoginWhitelist",
+        0,
+        KEY_READ,
+        &hKey
+    );
+
+    if (status != ERROR_SUCCESS)
+    {
+        return FALSE; // 默认返回 FALSE
+    }
+
+    // 2. 读取 DWORD 值
+    status = RegQueryValueExW(
+        hKey,
+        L"ChangePassword",
+        NULL,
+        NULL,
+        (LPBYTE)&dwValue,
+        &dwSize
+    );
+
+    RegCloseKey(hKey);
+
+    if (status != ERROR_SUCCESS)
+    {
+        return FALSE; // 读取失败时返回 FALSE
+    }
+    return (dwValue == 1); // 返回 TRUE 仅当值为 1
+}
+
+// 读取注册表中的子账号
+HRESULT CSampleProvider::_ReadSavedSubAccount()
+{
+    HKEY hKey;
+    DWORD dwType = REG_SZ;
+    WCHAR wszUsername[MAX_PATH] = { 0 };
+    DWORD cbData = sizeof(wszUsername);
+
+    LSTATUS status = RegOpenKeyExW(
+        HKEY_LOCAL_MACHINE,
+        L"SOFTWARE\\Softdomain\\LoginWhitelist",
+        0,
+        KEY_READ,
+        &hKey
+    );
+
+    if (status == ERROR_SUCCESS)
+    {
+        status = RegQueryValueExW(
+            hKey,
+            L"LastSubAccount",
+            NULL,
+            &dwType,
+            (LPBYTE)wszUsername,
+            &cbData
+        );
+        RegCloseKey(hKey);
+
+        if (status == ERROR_SUCCESS)
+        {
+            StringCchCopyW(_wszSavedSubAccount, ARRAYSIZE(_wszSavedSubAccount), wszUsername);
+            _bHasSavedSubAccount = true;
+            return S_OK;
+        }
+    }
+    _bHasSavedSubAccount = false;
     return S_FALSE;
 }

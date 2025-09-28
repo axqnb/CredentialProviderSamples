@@ -19,16 +19,19 @@
 
 enum SAMPLE_FIELD_ID 
 {
-    SFI_TILEIMAGE       = 0,
-    SFI_LARGE_TEXT      = 1,
-    SFI_SMALL_TEXT      = 2,
-    SFI_EDIT_TEXT       = 3,
-    SFI_PASSWORD        = 4,
-    SFI_SUBMIT_BUTTON   = 5, 
-    SFI_CHECKBOX        = 6,
-    SFI_COMBOBOX        = 7,
-    SFI_COMMAND_LINK    = 8,
-    SFI_NUM_FIELDS      = 9,  // Note: if new fields are added, keep NUM_FIELDS last.  This is used as a count of the number of fields
+    SFI_TILEIMAGE           = 0,
+    SFI_LARGE_TEXT          = 1,
+    SFI_SMALL_TEXT          = 2,
+    SFI_EDIT_TEXT           = 3,
+    SFI_SUB_ACCOUNT         = 4,        //子账号
+    SFI_PASSWORD            = 5,
+    SFI_NEW_PASSWORD        = 6,        // 新密码
+    SFI_CONFIRM_PASSWORD    = 7,        // 新密码确认
+    SFI_SUBMIT_BUTTON       = 8, 
+    SFI_CHECKBOX            = 9,
+    SFI_COMBOBOX            = 10,
+    SFI_COMMAND_LINK        = 11,
+    SFI_NUM_FIELDS          = 12,  // Note: if new fields are added, keep NUM_FIELDS last.  This is used as a count of the number of fields
 };
 
 // The first value indicates when the tile is displayed (selected, not selected)
@@ -54,12 +57,16 @@ static const FIELD_STATE_PAIR s_rgFieldStatePairs[] =
     { CPFS_DISPLAY_IN_BOTH, CPFIS_NONE },                   // SFI_TILEIMAGE
     { CPFS_DISPLAY_IN_BOTH, CPFIS_NONE },                   // SFI_LARGE_TEXT
     { CPFS_DISPLAY_IN_DESELECTED_TILE, CPFIS_NONE    },     // SFI_SMALL_TEXT   
-    { CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_FOCUSED },       // SFI_EDIT_TEXT   
-    { CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE },       // SFI_PASSWORD
+    { CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_FOCUSED },       // SFI_EDIT_TEXT
+    { CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE },          // SFI_SUB_ACCOUNT
+    { CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE },          // SFI_PASSWORD
+    { CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE },          // NEW_PASSWORD
+    { CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE },          // COMFIRM_PASSWORD
     { CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE    },       // SFI_SUBMIT_BUTTON   
     { CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE  },         // SFI_CHECKBOX   
     { CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE    },       // SFI_COMBOBOX   
-    { CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE    },       // SFI_COMMAND_LINK   
+    { CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE    },       // SFI_COMMAND_LINK
+
 };
 
 // Field descriptors for unlock and logon.
@@ -72,8 +79,11 @@ static const CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR s_rgCredProvFieldDescriptors[]
     { SFI_TILEIMAGE, CPFT_TILE_IMAGE, L"Image" },
     { SFI_LARGE_TEXT, CPFT_LARGE_TEXT, L"LargeText" },
     { SFI_SMALL_TEXT, CPFT_SMALL_TEXT, L"SmallText" },
-    { SFI_EDIT_TEXT, CPFT_EDIT_TEXT, L"Username" }, 
-    { SFI_PASSWORD, CPFT_PASSWORD_TEXT, L"Password" },
+    { SFI_EDIT_TEXT, CPFT_EDIT_TEXT, L"主账号" },
+    { SFI_SUB_ACCOUNT, CPFT_EDIT_TEXT, L"子账号" },                 //新增：登录子账号
+    { SFI_PASSWORD, CPFT_PASSWORD_TEXT, L"主账号密码" },
+    { SFI_NEW_PASSWORD, CPFT_PASSWORD_TEXT, L"NewPassword" },           //新增：新密码
+    { SFI_CONFIRM_PASSWORD, CPFT_PASSWORD_TEXT, L"ConfirmPassword" },   //新增：确认密码
     { SFI_SUBMIT_BUTTON, CPFT_SUBMIT_BUTTON, L"Submit" },
     { SFI_CHECKBOX, CPFT_CHECKBOX, L"Checkbox" },
     { SFI_COMBOBOX, CPFT_COMBOBOX, L"Combobox" },

@@ -37,7 +37,7 @@ std::wstring JoinStrings(const std::vector<std::wstring>& tokens, wchar_t delimi
     return result;
 }
 
-// 检查用户是否在白名单中
+// 检查用户是否在本地白名单中
 bool IsUserInWhitelist(const std::wstring& username)
 {
     HKEY hKey;
