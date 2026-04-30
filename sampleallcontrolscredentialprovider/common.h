@@ -23,10 +23,10 @@ enum SAMPLE_FIELD_ID
     SFI_LARGE_TEXT          = 1,
     SFI_SMALL_TEXT          = 2,
     SFI_EDIT_TEXT           = 3,
-    SFI_SUB_ACCOUNT         = 4,        //×ÓÕËºÅ
+    SFI_SUB_ACCOUNT         = 4,        //ï¿½ï¿½ï¿½Ëºï¿½
     SFI_PASSWORD            = 5,
-    SFI_NEW_PASSWORD        = 6,        // ÐÂÃÜÂë
-    SFI_CONFIRM_PASSWORD    = 7,        // ÐÂÃÜÂëÈ·ÈÏ
+    SFI_NEW_PASSWORD        = 6,        // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    SFI_CONFIRM_PASSWORD    = 7,        // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È·ï¿½ï¿½
     SFI_SUBMIT_BUTTON       = 8, 
     SFI_CHECKBOX            = 9,
     SFI_COMBOBOX            = 10,
@@ -79,11 +79,11 @@ static const CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR s_rgCredProvFieldDescriptors[]
     { SFI_TILEIMAGE, CPFT_TILE_IMAGE, L"Image" },
     { SFI_LARGE_TEXT, CPFT_LARGE_TEXT, L"LargeText" },
     { SFI_SMALL_TEXT, CPFT_SMALL_TEXT, L"SmallText" },
-    { SFI_EDIT_TEXT, CPFT_EDIT_TEXT, L"Ö÷ÕËºÅ" },
-    { SFI_SUB_ACCOUNT, CPFT_EDIT_TEXT, L"×ÓÕËºÅ" },                 //ÐÂÔö£ºµÇÂ¼×ÓÕËºÅ
-    { SFI_PASSWORD, CPFT_PASSWORD_TEXT, L"Ö÷ÕËºÅÃÜÂë" },
-    { SFI_NEW_PASSWORD, CPFT_PASSWORD_TEXT, L"NewPassword" },           //ÐÂÔö£ºÐÂÃÜÂë
-    { SFI_CONFIRM_PASSWORD, CPFT_PASSWORD_TEXT, L"ConfirmPassword" },   //ÐÂÔö£ºÈ·ÈÏÃÜÂë
+    { SFI_EDIT_TEXT, CPFT_EDIT_TEXT, L"ï¿½ï¿½ï¿½Ëºï¿½" },
+    { SFI_SUB_ACCOUNT, CPFT_EDIT_TEXT, L"ï¿½ï¿½ï¿½Ëºï¿½" },                 //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â¼ï¿½ï¿½ï¿½Ëºï¿½
+    { SFI_PASSWORD, CPFT_PASSWORD_TEXT, L"ï¿½ï¿½ï¿½Ëºï¿½ï¿½ï¿½ï¿½ï¿½" },
+    { SFI_NEW_PASSWORD, CPFT_PASSWORD_TEXT, L"NewPassword" },           //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    { SFI_CONFIRM_PASSWORD, CPFT_PASSWORD_TEXT, L"ConfirmPassword" },   //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     { SFI_SUBMIT_BUTTON, CPFT_SUBMIT_BUTTON, L"Submit" },
     { SFI_CHECKBOX, CPFT_CHECKBOX, L"Checkbox" },
     { SFI_COMBOBOX, CPFT_COMBOBOX, L"Combobox" },
