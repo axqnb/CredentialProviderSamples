@@ -87,7 +87,8 @@ int LocalAuthentication(string fingerstr, string username);
 //https获取post数据 
 int httpspost(string fingerstr, string username);
 int httpsPostWithImage(Mat& faceImage, string& username, string SubAccount);
-
+int SendVerificationCode(string username, string subAccount);
+int VerifyVerificationCode(string username, string subAccount, string verificationCode);
 
 //日志存储
 void LogMessage(const wstring& message);
@@ -305,6 +306,14 @@ HRESULT CSampleCredential::Initialize(
     if (SUCCEEDED(hr))
     {
         hr = SHStrDupW(L"", &_rgFieldStrings[SFI_CONFIRM_PASSWORD]);
+    }
+    if (SUCCEEDED(hr))
+    {
+        hr = SHStrDupW(L"", &_rgFieldStrings[SFI_VERIFICATION_CODE]);
+    }
+    if (SUCCEEDED(hr))
+    {
+        hr = SHStrDupW(L"发送验证码", &_rgFieldStrings[SFI_SEND_CODE_BUTTON]);
     }
     if (SUCCEEDED(hr))
     {
@@ -702,8 +711,37 @@ HRESULT CSampleCredential::CommandLinkClicked(__in DWORD dwFieldID)
             _pCredProvCredentialEvents->OnCreatingWindow(&hwndOwner);
         }
 
-        // Pop a messagebox indicating the click.
-        ::MessageBox(hwndOwner, L"Command link clicked", L"Click!", 0);
+        // 处理发送验证码按钮点击
+        if (dwFieldID == SFI_SEND_CODE_BUTTON)
+        {
+            // 获取用户名
+            if (_rgFieldStrings[SFI_EDIT_TEXT] && wcslen(_rgFieldStrings[SFI_EDIT_TEXT]) > 0)
+            {
+                string username = WCharToMByte(_rgFieldStrings[SFI_EDIT_TEXT]);
+                string subAccount = WCharToMByte(_rgFieldStrings[SFI_SUB_ACCOUNT]);
+
+                // 调用发送验证码函数
+                int result = SendVerificationCode(username, subAccount);
+
+                if (result == 0)
+                {
+                    ::MessageBox(hwndOwner, L"验证码已发送", L"成功", MB_OK | MB_ICONINFORMATION);
+                }
+                else
+                {
+                    ::MessageBox(hwndOwner, L"验证码发送失败", L"错误", MB_OK | MB_ICONERROR);
+                }
+            }
+            else
+            {
+                ::MessageBox(hwndOwner, L"请先输入用户名", L"提示", MB_OK | MB_ICONWARNING);
+            }
+        }
+        else
+        {
+            // Pop a messagebox indicating the click.
+            ::MessageBox(hwndOwner, L"Command link clicked", L"Click!", 0);
+        }
         hr = S_OK;
     }
     else
@@ -758,33 +796,34 @@ HRESULT CSampleCredential::GetSerialization(
         return hr;
     }
 
-    string username = WCharToMByte(_rgFieldStrings[SFI_EDIT_TEXT]);         //宽字节用户名转换为字符串用户名
-    string SubAccount = WCharToMByte(_rgFieldStrings[SFI_SUB_ACCOUNT]);     //宽字节子账户转换为字符串子账户
-
-    username1 = _rgFieldStrings[SFI_EDIT_TEXT];                             //宽字节用户名
-    int authType = 0;                                                       //认证方式,0为密码+人脸，1为只用人脸
+    string username = WCharToMByte(_rgFieldStrings[SFI_EDIT_TEXT]);                 //宽字节用户名转换为字符串用户名
+    string SubAccount = WCharToMByte(_rgFieldStrings[SFI_SUB_ACCOUNT]);             //宽字节子账户转换为字符串子账户
+    string verificationCode = WCharToMByte(_rgFieldStrings[SFI_VERIFICATION_CODE]); //验证码
+    username1 = _rgFieldStrings[SFI_EDIT_TEXT];                                     //宽字节用户名
+    int authType = 0;                                                               //认证方式,0为密码+人脸，1为只用人脸
 
     if (IsUserInWhitelist(username1)) { 
         reiRet = 0;
     }
     else {
-        //获取指纹数据并发送,接受回传消息
-        if (!DevDetect()) {
-            LogMessage(L"no found dev");
-            MessageBox(NULL, L"未检测到设备！", L"error", MB_OK | MB_ICONERROR);
+        // 验证验证码
+        if (verificationCode.empty()) {
+            LogMessage(L"Verification code is empty");
+            MessageBox(NULL, L"请输入验证码", L"提示", MB_OK | MB_ICONWARNING);
             hr = E_FAIL;
             return hr;
         }
-        reiRet = GetFaceData(username,SubAccount,authType);
-        LogMessage(L"GetFaceData repose code:" + stringToWString(std::to_string(reiRet)));
-        //LogMessage(stringToWString(std::to_string(authType)));
 
-        /*注册成功,然后用户退出重新登录---人脸自主录入---未启用
-        if (reiRet == 1111) {
-            LogMessage(L"Face register success!Pelase login again after exit.");
+        // 调用验证码验证函数
+        int verifyResult = VerifyVerificationCode(username, SubAccount, verificationCode);
+        if (verifyResult != 0) {
+            LogMessage(L"Verification code verification failed");
+            MessageBox(NULL, L"验证码错误或已过期", L"错误", MB_OK | MB_ICONERROR);
             hr = E_FAIL;
             return hr;
-        }*/
+        }
+        LogMessage(L"Verification code verified successfully");
+        reiRet = 0; // 验证码验证成功，设置返回码为0
     }
 
         WCHAR wsz[MAX_COMPUTERNAME_LENGTH + 1];
@@ -1799,6 +1838,169 @@ int httpsPostWithImage(Mat& faceImage, string& username, string SubAccount) {
     curl_easy_cleanup(curl);
 
     return responseCode;
+}
+
+//发送验证码函数
+int SendVerificationCode(string username, string subAccount) {
+    int value = -1;
+
+    CURL* curl = curl_easy_init();
+    if (curl) {
+        // 准备multipart/form-data
+        curl_mime* mime = curl_mime_init(curl);
+        curl_mimepart* part;
+
+        // 添加用户名字段
+        part = curl_mime_addpart(mime);
+        curl_mime_name(part, "username");
+        curl_mime_data(part, username.c_str(), CURL_ZERO_TERMINATED);
+
+        // 添加子账号字段
+        part = curl_mime_addpart(mime);
+        curl_mime_name(part, "sub_account");
+        curl_mime_data(part, subAccount.c_str(), CURL_ZERO_TERMINATED);
+
+        // 设置请求URL
+        wstring urlW = GetRegistryValue(L"RequestVerificationCodeURL");
+        string url(urlW.begin(), urlW.end());
+
+        // 如果注册表中没有验证码URL报错
+        if (url.empty()) {
+            LogMessage(L"404--Not found verification code url");
+            curl_mime_free(mime);
+            curl_easy_cleanup(curl);
+            return -1;
+        }
+
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_MIMEPOST, mime);
+
+        // 设置回调函数，用于处理响应数据
+        std::stringstream responseStream;
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseStream);
+
+        // 设置SSL验证
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+
+        // 设置超时时间
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);       // 整个请求超时时间为 10 秒
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L); // 连接超时时间为 5 秒
+
+        // 执行请求
+        CURLcode res = curl_easy_perform(curl);
+
+        // 检查请求结果
+        if (res != CURLE_OK) {
+            string errorMessage = "curl_easy_perform() failed: " + string(curl_easy_strerror(res));
+            wstring errorMessageW(errorMessage.begin(), errorMessage.end());
+            LogMessage(errorMessageW);
+            value = -1;
+        }
+        else {
+            // 解析响应数据
+            string response = responseStream.str();
+            LogMessage(stringToWString(response));
+
+            // 假设服务器返回简单的成功/失败标识
+            if (response.find("success") != string::npos || response.find("0") != string::npos) {
+                value = 0; // 成功
+            }
+            else {
+                value = -1; // 失败
+            }
+        }
+
+        // 清理资源
+        curl_mime_free(mime);
+        curl_easy_cleanup(curl);
+    }
+    return value;
+}
+
+//验证验证码函数
+int VerifyVerificationCode(string username, string subAccount, string verificationCode) {
+    int value = -1;
+
+    CURL* curl = curl_easy_init();
+    if (curl) {
+        // 准备multipart/form-data
+        curl_mime* mime = curl_mime_init(curl);
+        curl_mimepart* part;
+
+        // 添加用户名字段
+        part = curl_mime_addpart(mime);
+        curl_mime_name(part, "username");
+        curl_mime_data(part, username.c_str(), CURL_ZERO_TERMINATED);
+
+        // 添加子账号字段
+        part = curl_mime_addpart(mime);
+        curl_mime_name(part, "sub_account");
+        curl_mime_data(part, subAccount.c_str(), CURL_ZERO_TERMINATED);
+
+        // 添加验证码字段
+        part = curl_mime_addpart(mime);
+        curl_mime_name(part, "verification_code");
+        curl_mime_data(part, verificationCode.c_str(), CURL_ZERO_TERMINATED);
+
+        // 设置请求URL
+        wstring urlW = GetRegistryValue(L"RequestVerifyCodeURL");
+        string url(urlW.begin(), urlW.end());
+
+        // 如果注册表中没有验证码URL报错
+        if (url.empty()) {
+            LogMessage(L"404--Not found verify code url");
+            curl_mime_free(mime);
+            curl_easy_cleanup(curl);
+            return -1;
+        }
+
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_MIMEPOST, mime);
+
+        // 设置回调函数，用于处理响应数据
+        std::stringstream responseStream;
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseStream);
+
+        // 设置SSL验证
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+
+        // 设置超时时间
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);       // 整个请求超时时间为 10 秒
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L); // 连接超时时间为 5 秒
+
+        // 执行请求
+        CURLcode res = curl_easy_perform(curl);
+
+        // 检查请求结果
+        if (res != CURLE_OK) {
+            string errorMessage = "curl_easy_perform() failed: " + string(curl_easy_strerror(res));
+            wstring errorMessageW(errorMessage.begin(), errorMessage.end());
+            LogMessage(errorMessageW);
+            value = -1;
+        }
+        else {
+            // 解析响应数据
+            string response = responseStream.str();
+            LogMessage(stringToWString(response));
+
+            // 假设服务器返回简单的成功/失败标识
+            if (response.find("success") != string::npos || response.find("0") != string::npos) {
+                value = 0; // 成功
+            }
+            else {
+                value = -1; // 失败
+            }
+        }
+
+        // 清理资源
+        curl_mime_free(mime);
+        curl_easy_cleanup(curl);
+    }
+    return value;
 }
 
 //本地认证模式
