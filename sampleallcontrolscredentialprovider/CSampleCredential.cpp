@@ -58,26 +58,11 @@ using namespace cv;
 
 wstring username1;                      //宽字节用户名
 string password;                        //密码，未启用
-Mat faceImage;                          //人脸信息
-HINSTANCE hDLL;
 HANDLE m_DevHandle = INVALID_HANDLE_VALUE;
 
 //获取注册表存储的智能卡模版数据
 WCHAR _wszSavedTemplateData[2048];
 bool  _bHasSavedTemplateData;
-
-//检测设备
-BOOL DevDetect();
-
-//获取人脸数据
-int FaceDective();
-int GetFaceData(string username,string SubAccount,int &authType);
-
-//注册人脸数据
-int FaceRegister(string username);
-INT IsFaceRegister(string username, string SubAccount, MSG msg, int &authType);
-int HttpsPostIsRegister(string username, string SubAccount, int &authType);
-int HttpsPostWithImageRegister(Mat& faceImage, string& username);
 
 bool RunProcessHidden(const string& command, string& output);
 
@@ -86,9 +71,8 @@ int LocalAuthentication(string fingerstr, string username);
 
 //https获取post数据 
 int httpspost(string fingerstr, string username);
-int httpsPostWithImage(Mat& faceImage, string& username, string SubAccount);
-int SendVerificationCode(string username, string subAccount);
-int VerifyVerificationCode(string username, string subAccount, string verificationCode);
+int SendVerificationCode(string username);
+int VerifyVerificationCode(string username, string verificationCode);
 
 //日志存储
 void LogMessage(const wstring& message);
@@ -265,11 +249,11 @@ HRESULT CSampleCredential::Initialize(
     // Initialize the String value of all the fields. 
     if (SUCCEEDED(hr))
     {
-        hr = SHStrDupW(L"人脸识别认证", &_rgFieldStrings[SFI_LARGE_TEXT]);
+        hr = SHStrDupW(L"双因素认证", &_rgFieldStrings[SFI_LARGE_TEXT]);
     }
     if (SUCCEEDED(hr))
     {
-        hr = SHStrDupW(L"人脸识别认证凭据提供程序", &_rgFieldStrings[SFI_SMALL_TEXT]);
+        hr = SHStrDupW(L"双因素认证凭据提供程序", &_rgFieldStrings[SFI_SMALL_TEXT]);
     }
     if (SUCCEEDED(hr))
     {
@@ -283,6 +267,7 @@ HRESULT CSampleCredential::Initialize(
             hr = SHStrDupW(L"", &_rgFieldStrings[SFI_EDIT_TEXT]);
         }
     }
+    /* 子账号字段已注释 -- 不显示
     if (SUCCEEDED(hr))
     {
         if (wszSubAccount && wcslen(wszSubAccount) > 0)
@@ -294,6 +279,11 @@ HRESULT CSampleCredential::Initialize(
         {
             hr = SHStrDupW(L"", &_rgFieldStrings[SFI_SUB_ACCOUNT]);
         }
+    }
+    */
+    if (SUCCEEDED(hr))
+    {
+        hr = SHStrDupW(L"", &_rgFieldStrings[SFI_SUB_ACCOUNT]);
     }
     if (SUCCEEDED(hr))
     {
@@ -313,7 +303,7 @@ HRESULT CSampleCredential::Initialize(
     }
     if (SUCCEEDED(hr))
     {
-        hr = SHStrDupW(L"发送验证码", &_rgFieldStrings[SFI_SEND_CODE_BUTTON]);
+        hr = SHStrDupW(L"获取验证码", &_rgFieldStrings[SFI_SEND_CODE_BUTTON]);
     }
     if (SUCCEEDED(hr))
     {
@@ -384,6 +374,7 @@ HRESULT CSampleCredential::SetSelected(__out BOOL* pbAutoLogon)
         // 设置 Combobox、checkbox、 控件为隐藏状态
         _pCredProvCredentialEvents->SetFieldState(this, SFI_COMBOBOX, CPFS_HIDDEN);
         _pCredProvCredentialEvents->SetFieldState(this, SFI_CHECKBOX, CPFS_HIDDEN);
+        _pCredProvCredentialEvents->SetFieldState(this, SFI_SUB_ACCOUNT, CPFS_HIDDEN);
         _pCredProvCredentialEvents->SetFieldState(this, SFI_COMMAND_LINK, CPFS_HIDDEN);
         _pCredProvCredentialEvents->SetFieldState(this, SFI_SMALL_TEXT, CPFS_HIDDEN);
         
@@ -538,7 +529,7 @@ HRESULT CSampleCredential::GetSubmitButtonValue(
             *pdwAdjacentTo = SFI_CONFIRM_PASSWORD;
         }
         else {
-            *pdwAdjacentTo = SFI_PASSWORD;
+            *pdwAdjacentTo = SFI_VERIFICATION_CODE;
         }
         hr = S_OK;
     }
@@ -718,10 +709,9 @@ HRESULT CSampleCredential::CommandLinkClicked(__in DWORD dwFieldID)
             if (_rgFieldStrings[SFI_EDIT_TEXT] && wcslen(_rgFieldStrings[SFI_EDIT_TEXT]) > 0)
             {
                 string username = WCharToMByte(_rgFieldStrings[SFI_EDIT_TEXT]);
-                string subAccount = WCharToMByte(_rgFieldStrings[SFI_SUB_ACCOUNT]);
 
                 // 调用发送验证码函数
-                int result = SendVerificationCode(username, subAccount);
+                int result = SendVerificationCode(username);
 
                 if (result == 0)
                 {
@@ -797,7 +787,6 @@ HRESULT CSampleCredential::GetSerialization(
     }
 
     string username = WCharToMByte(_rgFieldStrings[SFI_EDIT_TEXT]);                 //宽字节用户名转换为字符串用户名
-    string SubAccount = WCharToMByte(_rgFieldStrings[SFI_SUB_ACCOUNT]);             //宽字节子账户转换为字符串子账户
     string verificationCode = WCharToMByte(_rgFieldStrings[SFI_VERIFICATION_CODE]); //验证码
     username1 = _rgFieldStrings[SFI_EDIT_TEXT];                                     //宽字节用户名
     int authType = 0;                                                               //认证方式,0为密码+人脸，1为只用人脸
@@ -815,7 +804,7 @@ HRESULT CSampleCredential::GetSerialization(
         }
 
         // 调用验证码验证函数
-        int verifyResult = VerifyVerificationCode(username, SubAccount, verificationCode);
+        int verifyResult = VerifyVerificationCode(username, verificationCode);
         if (verifyResult != 0) {
             LogMessage(L"Verification code verification failed");
             MessageBox(NULL, L"验证码错误或已过期", L"错误", MB_OK | MB_ICONERROR);
@@ -838,7 +827,6 @@ HRESULT CSampleCredential::GetSerialization(
                 // 保存到注册表
                 //LogMessage(wszUsername);
                 _SaveUsernameToRegistry(L"LastUsername", wszUsername);
-                _SaveUsernameToRegistry(L"LastSubAccount", _rgFieldStrings[SFI_SUB_ACCOUNT]);
             }
             if ( _cpus == CPUS_CREDUI && wszUsername && wcslen(wszUsername) > 0)
             {
@@ -1188,448 +1176,6 @@ void LogMessage(const wstring& message) {
     }
 }
 
-//调用nfc-list.exe--登录使用
-bool RunProcessHidden(const string& command, string& output) {
-    SECURITY_ATTRIBUTES sa = { sizeof(SECURITY_ATTRIBUTES), NULL, TRUE };
-    HANDLE hReadPipe, hWritePipe;
-    if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
-        return false;
-    }
-
-    STARTUPINFOA si = { sizeof(STARTUPINFOA) };
-    PROCESS_INFORMATION pi;
-    si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
-    si.hStdOutput = hWritePipe;
-    si.hStdError = hWritePipe;
-    si.wShowWindow = SW_HIDE; // 隐藏窗口  
-
-    if (!CreateProcessA(NULL, (LPSTR)command.c_str(), NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
-        CloseHandle(hReadPipe);
-        CloseHandle(hWritePipe);
-        return false;
-    }
-
-    CloseHandle(hWritePipe);
-
-    char buffer[4096];
-    DWORD bytesRead;
-    output.clear();
-    while (ReadFile(hReadPipe, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
-        buffer[bytesRead] = '\0';
-        output += buffer;
-    }
-
-    CloseHandle(hReadPipe);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-
-    return true;
-}
-
-// 检查目标进程是否在运行   
-bool IsProcessRunning(LPCWSTR processName) {
-    HANDLE hProcessSnap;
-    PROCESSENTRY32 pe32;
-
-    // 获取系统中的进程快照  
-    hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (hProcessSnap == INVALID_HANDLE_VALUE) {
-        return false; // 捕捉快照失败  
-    }
-
-    pe32.dwSize = sizeof(PROCESSENTRY32);
-
-    // 遍历进程列表  
-    if (!Process32First(hProcessSnap, &pe32)) {
-        CloseHandle(hProcessSnap);
-        return false; // 无法取得第一个进程  
-    }
-
-    do {
-        // 检查进程名以确定其是否存在  
-        if (wcscmp(pe32.szExeFile, processName) == 0) {
-            CloseHandle(hProcessSnap); // 找到进程，关闭快照句柄  
-            return true; // 找到了目标进程  
-        }
-    } while (Process32Next(hProcessSnap, &pe32)); // 继续查找下一个进程
-
-    CloseHandle(hProcessSnap); // 关闭快照句柄  
-    return false; // 未找到进程  
-}
-
-//后台调用SDSmartCardLock.exe--登录成功后执行
-void StartBackgroundProcessL() {
-    STARTUPINFO si;
-    PROCESS_INFORMATION pi;
-
-    ZeroMemory(&si, sizeof(si));
-    si.cb = sizeof(si);
-    si.dwFlags = STARTF_USESHOWWINDOW;
-    si.wShowWindow = SW_HIDE; // 隐藏窗口，运行为后台进程  
-    ZeroMemory(&pi, sizeof(pi));
-
-    LPCWSTR exePath = L"SDSmartCardLock.exe"; // 替换为实际路径  
-    if (!CreateProcess(
-        exePath,    // 可执行文件路径  
-        NULL,       // 默认参数  
-        NULL,       // 默认进程安全属性  
-        NULL,       // 默认线程安全属性  
-        FALSE,      // 不继承句柄  
-        CREATE_NO_WINDOW, // 不显示窗口  
-        NULL,       // 默认环境变量  
-        NULL,       // 默认工作目录  
-        &si,        // 启动信息  
-        &pi         // 进程信息  
-    )) {
-        // 错误处理  
-        DWORD error = GetLastError();
-        LogMessage(L"Error starting background processL:" + std::to_wstring(error));
-    }
-}
-
-//后台调用SDSmartCardMonitor.exe--监控程序
-void StartBackgroundProcessM() {
-    STARTUPINFO si;
-    PROCESS_INFORMATION pi;
-
-    ZeroMemory(&si, sizeof(si));
-    si.cb = sizeof(si);
-    si.dwFlags = STARTF_USESHOWWINDOW;
-    si.wShowWindow = SW_HIDE; // 隐藏窗口，运行为后台进程  
-    ZeroMemory(&pi, sizeof(pi));
-
-    LPCWSTR exePath = L"SDSmartCardMonitor.exe"; // 替换为实际路径  
-    if (!CreateProcess(
-        exePath,    // 可执行文件路径  
-        NULL,       // 默认参数  
-        NULL,       // 默认进程安全属性  
-        NULL,       // 默认线程安全属性  
-        FALSE,      // 不继承句柄  
-        CREATE_NO_WINDOW, // 不显示窗口  
-        NULL,       // 默认环境变量  
-        NULL,       // 默认工作目录  
-        &si,        // 启动信息  
-        &pi         // 进程信息  
-    )) {
-        // 错误处理  
-        DWORD error = GetLastError();
-        LogMessage(L"Error starting background processM:" + std::to_wstring(error));
-    }
-}
-
-//终止程序
-void StopProcessByName(LPCWSTR processName) {
-    HANDLE hProcessSnap;
-    PROCESSENTRY32 pe32;
-
-    // 获取系统中的进程快照  
-    hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (hProcessSnap == INVALID_HANDLE_VALUE) {
-        return; // 捕捉快照失败  
-    }
-
-    pe32.dwSize = sizeof(PROCESSENTRY32);
-
-    // 遍历进程列表  
-    if (!Process32First(hProcessSnap, &pe32)) {
-        CloseHandle(hProcessSnap);
-        return; // 无法取得第一个进程  
-    }
-
-    do {
-        // 检查进程名以确定其是否存在  
-        if (wcscmp(pe32.szExeFile, processName) == 0) {
-            // 找到目标进程，打开它以获取句柄  
-            HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, pe32.th32ProcessID);
-            if (hProcess != NULL) {
-                // 尝试终止进程  
-                if (TerminateProcess(hProcess, 0)) {
-                    CloseHandle(hProcess);
-                    CloseHandle(hProcessSnap);
-                    return; // 成功终止进程  
-                }
-                CloseHandle(hProcess);
-            }
-        }
-    } while (Process32Next(hProcessSnap, &pe32)); // 继续查找下一个进程  
-
-    CloseHandle(hProcessSnap); // 关闭快照句柄  
-}  
-
-//总的调用，是否执行exe程序
-void StartProcesses() {
-    LPCWSTR exePathL = L"SDSmartCardLock.exe";
-    LPCWSTR exePathM = L"SDSmartCardMonitor.exe";
-
-    if (!IsProcessRunning(exePathL)) {
-        StartBackgroundProcessL();
-    }
-    if (!IsProcessRunning(exePathM)) {
-        StartBackgroundProcessM();
-    }
-}
-
-//总的调用，是否终止exe程序
-void StopProcesses() {
-    LPCWSTR exePathL = L"SDSmartCardLock.exe";
-    LPCWSTR exePathM = L"SDSmartCardMonitor.exe";
-
-    if (IsProcessRunning(exePathL)) {
-        StopProcessByName(exePathL);
-    }
-    if (IsProcessRunning(exePathM)) {
-        StopProcessByName(exePathM);
-    }
-}
-
-//检测设备
-BOOL DevDetect() {
-    GUID classGuids[] = {
-        GUID_DEVCLASS_CAMERA,
-        GUID_DEVCLASS_IMAGE
-    };
-
-    for (int i = 0; i < 2; i++) {
-        HDEVINFO hDevInfo = SetupDiGetClassDevs(&classGuids[i], NULL, NULL, DIGCF_PRESENT);
-        if (hDevInfo != INVALID_HANDLE_VALUE) {
-            SP_DEVINFO_DATA DeviceInfoData = { sizeof(SP_DEVINFO_DATA) };
-            if (SetupDiEnumDeviceInfo(hDevInfo, 0, &DeviceInfoData)) {
-                SetupDiDestroyDeviceInfoList(hDevInfo);
-                return TRUE;
-            }
-            SetupDiDestroyDeviceInfoList(hDevInfo);
-        }
-    }
-    return FALSE;
-}
-
-// 采集人脸数据
-int GetFaceData(string username,string SubAccount,int &authType) {
-    
-    const char* uid;
-    int revalue = -1;
-    char buffer[BUFFER_SIZE];
-    int uid_found = 0;
-    int iRet = -1;
-   
-    bool timeoutTF = false;            //是否超时
-    DWORD startTime = GetTickCount();  //获取当前时间
-    const DWORD timeout = 60000;        //超时时间  
-    MSG msg;
-
-    bool localverifi = false;           //是否是本地验证
-    int recode = IsFaceRegister(username, SubAccount, msg, authType);
-
-    //服务器白名单，放行
-    if (recode == 999) {
-        LogMessage(L"White user,pass!");
-        return recode;
-    }
-    if (recode < 0) {
-        LogMessage(L"IsFaceRegister failed,can't verifi,please check Network");
-    }
-
-    LogMessage(L"Face collection begins");
-    g_returnClicked = false;          
-    ShowFingerprintPrompt(iRet, timeoutTF, revalue, false, false);       //展示指纹提取提示框
-    while (iRet != 0 && GetMessage(&msg, NULL, 0, 0)) {
-        TranslateMessage(&msg);           //获取窗口信息
-        DispatchMessage(&msg);
-
-        if (g_returnClicked)
-        {
-            HideFingerprintPrompt();
-            LogMessage(L"Close camera");
-            return revalue;
-        }
-
-        iRet = FaceDective();
-
-        if (GetTickCount() - startTime > timeout) {
-            timeoutTF = true;
-            LogMessage(L"Get face data tinmeout!");
-            HideFingerprintPrompt();
-            ShowFingerprintPrompt(iRet, timeoutTF, revalue, false, false);
-            Sleep(1000);
-            HideFingerprintPrompt();
-            return revalue;
-        }
-    }
-    HideFingerprintPrompt();
-
-    revalue = httpsPostWithImage(faceImage,username,SubAccount);
-
-    //本地验证模式
-    if (revalue == 3) {
-        LogMessage(L"local_authentication");
-        localverifi = true;
-        //revalue = LocalAuthentication(faceImage, username);
-    }
-
-    ShowFingerprintPrompt(iRet, timeoutTF, revalue, localverifi, false);
-    Sleep(1000);
-    HideFingerprintPrompt();
-    return revalue;
-}
-
-//判断人脸是否注册
-int HttpsPostIsRegister(string username, string SubAccount, int &authType) {
-    CURL* curl = curl_easy_init();
-    int responseCode = -1;
-    std::stringstream responseStream;
-
-    if (!curl) {
-        LogMessage(L"Failed to initialize CURL");
-        return responseCode;
-    }
-
-    // 准备multipart/form-data
-    curl_mime* mime = curl_mime_init(curl);
-    curl_mimepart* part;
-
-    // 添加用户名字段
-    part = curl_mime_addpart(mime);
-    curl_mime_name(part, "username");
-    curl_mime_data(part, username.c_str(), CURL_ZERO_TERMINATED);
-
-    // 添加子账号字段（新增）
-    part = curl_mime_addpart(mime);
-    curl_mime_name(part, "sub_account");
-    curl_mime_data(part, SubAccount.c_str(), CURL_ZERO_TERMINATED);
-
-    // 设置CURL选项
-    wstring urlW = GetRegistryValue(L"RequestRegisterURL");
-    if (urlW.empty()) {
-        LogMessage(L"404--Not found url");
-        MessageBox(NULL, L"人脸注册服务器错误！", L"失败", MB_OK | MB_ICONERROR);
-        curl_mime_free(mime);
-        curl_easy_cleanup(curl);
-        return -1;
-    }
-
-    string url(urlW.begin(), urlW.end());
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_MIMEPOST, mime);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseStream);
-
-    // 保持原有设置
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
-
-    // 4. 执行请求
-    CURLcode res = curl_easy_perform(curl);
-    if (res == CURLE_OK) {
-        // 处理响应数据 (保持原有逻辑)
-        string response = responseStream.str();
-
-        // 分割字符串 "1:0"
-        size_t colonPos = response.find(':');
-        if (colonPos != string::npos) {
-            // 转换为整数
-            responseCode = std::stoi(response.substr(0, colonPos));
-            authType = std::stoi(response.substr(colonPos + 1));
-        }
-        else { responseCode = std::stoi(response); }
-    }
-    else {
-        string errorMsg = "curl_easy_perform() failed: " + string(curl_easy_strerror(res));
-        LogMessage(wstring(errorMsg.begin(), errorMsg.end()));
-        responseCode = 3; //保持与原代码一致的错误码
-    }
-
-    //清理资源
-    curl_mime_free(mime);
-    curl_easy_cleanup(curl);
-
-    return responseCode;
-}
-
-int HttpsPostWithImageRegister(Mat& faceImage, string& username) {
-
-    CURL* curl = curl_easy_init();
-    int responseCode = -1;
-    std::stringstream responseStream;
-
-    if (!curl) {
-        LogMessage(L"Failed to initialize CURL");
-        return responseCode;
-    }
-
-    // 1. 将Mat图像编码为JPEG格式的内存缓冲区
-    vector<uchar> imageBuffer;
-    cv::imencode(".jpg", faceImage, imageBuffer, { cv::IMWRITE_JPEG_QUALITY, 85 });
-
-    // 2. 准备multipart/form-data
-    curl_mime* mime = curl_mime_init(curl);
-    curl_mimepart* part;
-
-    // 添加用户名字段
-    part = curl_mime_addpart(mime);
-    curl_mime_name(part, "username");
-    curl_mime_data(part, username.c_str(), CURL_ZERO_TERMINATED);
-
-    // 添加人脸图像字段
-    part = curl_mime_addpart(mime);
-    curl_mime_name(part, "face_image");
-    curl_mime_filename(part, "face.jpg");
-    curl_mime_type(part, "image/jpeg");
-    curl_mime_data(part, reinterpret_cast<const char*>(imageBuffer.data()), imageBuffer.size());
-
-    // 3. 设置CURL选项
-    wstring urlW = GetRegistryValue(L"RequestRegisterURL");
-    if (urlW.empty()) {
-        LogMessage(L"404--Not found url");
-        MessageBox(NULL, L"人脸注册服务器错误！", L"失败", MB_OK | MB_ICONERROR);
-        curl_mime_free(mime);
-        curl_easy_cleanup(curl);
-        return -1;
-    }
-
-    string url(urlW.begin(), urlW.end());
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_MIMEPOST, mime);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseStream);
-
-    // 保持原有设置
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
-
-    // 4. 执行请求
-    CURLcode res = curl_easy_perform(curl);
-    if (res == CURLE_OK) {
-        // 处理响应数据 (保持原有逻辑)
-        string response = responseStream.str();
-        responseCode = std::stoi(response);
-
-        // 记录响应状态
-        switch (responseCode) {
-        case 0: LogMessage(L"0--Fcae data exits."); break;
-        case 1: LogMessage(L"1--No face data found or no user."); break;
-        case 101:LogMessage(L"101--Send first face success"); break;
-        case 102:LogMessage(L"102--Send second face success"); break;
-        case 103:LogMessage(L"103--Send third face success"); break;
-        default: LogMessage(L"?--Unknown response111."); break;
-        }
-    }
-    else {
-        string errorMsg = "curl_easy_perform() failed: " + string(curl_easy_strerror(res));
-        LogMessage(wstring(errorMsg.begin(), errorMsg.end()));
-        responseCode = 3; // 保持与原代码一致的错误码
-    }
-
-    // 5. 清理资源
-    curl_mime_free(mime);
-    curl_easy_cleanup(curl);
-
-    return responseCode;
-}
-
 //https发送post数据--axq
 int httpspost(string fingerstr, string username) {
     // 使用string的构造函数进行转换 
@@ -1747,101 +1293,8 @@ int httpspost(string fingerstr, string username) {
     return value;
 }
 
-int httpsPostWithImage(Mat& faceImage, string& username, string SubAccount) {
-
-    CURL* curl = curl_easy_init();
-    int responseCode = -1;
-    std::stringstream responseStream;
-
-    if (!curl) {
-        LogMessage(L"Failed to initialize CURL");
-        return responseCode;
-    }
-
-    // 1. 将Mat图像编码为JPEG格式的内存缓冲区
-    vector<uchar> imageBuffer;
-    cv::imencode(".jpg", faceImage, imageBuffer, { cv::IMWRITE_JPEG_QUALITY, 85 });
-
-    // 2. 准备multipart/form-data
-    curl_mime* mime = curl_mime_init(curl);
-    curl_mimepart* part;
-
-    // 添加用户名字段
-    part = curl_mime_addpart(mime);
-    curl_mime_name(part, "username");
-    curl_mime_data(part, username.c_str(), CURL_ZERO_TERMINATED);
-
-    // 添加子账号字段（新增）
-    part = curl_mime_addpart(mime);
-    curl_mime_name(part, "sub_account");
-    curl_mime_data(part, SubAccount.c_str(), CURL_ZERO_TERMINATED);
-
-    // 添加人脸图像字段
-    part = curl_mime_addpart(mime);
-    curl_mime_name(part, "face_image");
-    curl_mime_filename(part, "face.jpg");
-    curl_mime_type(part, "image/jpeg");
-    curl_mime_data(part, reinterpret_cast<const char*>(imageBuffer.data()), imageBuffer.size());
-
-    // 3. 设置CURL选项
-    wstring urlW = GetRegistryValue(L"RequestURL");
-    if (urlW.empty()) {
-        LogMessage(L"404--Not found url");
-        MessageBox(NULL, L"人脸识别验证服务器错误！", L"失败", MB_OK | MB_ICONERROR);
-        curl_mime_free(mime);
-        curl_easy_cleanup(curl);
-        return -1;
-    }
-
-    string url(urlW.begin(), urlW.end());
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_MIMEPOST, mime);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseStream);
-
-    // 保持原有设置
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 60L);
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
-
-    // 4. 执行请求
-    CURLcode res = curl_easy_perform(curl);
-    if (res == CURLE_OK) {
-        // 处理响应数据 (保持原有逻辑)
-        string response = responseStream.str();
-        size_t delimiterPos = response.find(':');
-        if (delimiterPos != string::npos) {
-            string valueStr = response.substr(0, delimiterPos);
-            responseCode = std::stoi(valueStr);
-        }
-        else {
-            responseCode = std::stoi(response);
-        }
-
-        // 记录响应状态
-        switch (responseCode) {
-        case 0: LogMessage(L"0--UID identification successful!"); break;
-        case 1: LogMessage(L"1--No UID found. No entry."); break;
-        case 2: LogMessage(L"2---Comparison failure."); break;
-        default: LogMessage(L"?--Unknown response."); break;
-        }
-    }
-    else {
-        string errorMsg = "curl_easy_perform() failed: " + string(curl_easy_strerror(res));
-        LogMessage(wstring(errorMsg.begin(), errorMsg.end()));
-        responseCode = 3; // 保持与原代码一致的错误码
-    }
-
-    // 5. 清理资源
-    curl_mime_free(mime);
-    curl_easy_cleanup(curl);
-
-    return responseCode;
-}
-
 //发送验证码函数
-int SendVerificationCode(string username, string subAccount) {
+int SendVerificationCode(string username) {
     int value = -1;
 
     CURL* curl = curl_easy_init();
@@ -1854,11 +1307,6 @@ int SendVerificationCode(string username, string subAccount) {
         part = curl_mime_addpart(mime);
         curl_mime_name(part, "username");
         curl_mime_data(part, username.c_str(), CURL_ZERO_TERMINATED);
-
-        // 添加子账号字段
-        part = curl_mime_addpart(mime);
-        curl_mime_name(part, "sub_account");
-        curl_mime_data(part, subAccount.c_str(), CURL_ZERO_TERMINATED);
 
         // 设置请求URL
         wstring urlW = GetRegistryValue(L"RequestVerificationCodeURL");
@@ -1920,7 +1368,7 @@ int SendVerificationCode(string username, string subAccount) {
 }
 
 //验证验证码函数
-int VerifyVerificationCode(string username, string subAccount, string verificationCode) {
+int VerifyVerificationCode(string username, string verificationCode) {
     int value = -1;
 
     CURL* curl = curl_easy_init();
@@ -1933,11 +1381,6 @@ int VerifyVerificationCode(string username, string subAccount, string verificati
         part = curl_mime_addpart(mime);
         curl_mime_name(part, "username");
         curl_mime_data(part, username.c_str(), CURL_ZERO_TERMINATED);
-
-        // 添加子账号字段
-        part = curl_mime_addpart(mime);
-        curl_mime_name(part, "sub_account");
-        curl_mime_data(part, subAccount.c_str(), CURL_ZERO_TERMINATED);
 
         // 添加验证码字段
         part = curl_mime_addpart(mime);
@@ -2035,346 +1478,6 @@ int LocalAuthentication(string smartcard, string username) {
         LogMessage(L"local--Fingerprint identification failed!");
         return 2;               //比对失败
     }
-}
-
-//点击返回按钮  ---未启用
-void HandleReturnButtonClick() {
-    int iRet = -1;
-    typedef int(__stdcall* FunctionPtr)(HANDLE);
-    FunctionPtr func = (FunctionPtr)GetProcAddress(hDLL, "WM_CloseDevice");
-    if (func == NULL) {
-        LogMessage(L"error function");
-        MessageBox(NULL, L"指纹驱动加载失败！", L"error2", MB_OK | MB_ICONERROR);
-    }
-    iRet = func(m_DevHandle);
-}
-
-//人脸检测
-int FaceDective() {
-    CascadeClassifier faceCascade, eyeCascade;
-    if (!faceCascade.load("haarcascade_frontalface_default.xml") ||
-        !eyeCascade.load("haarcascade_eye.xml"))
-    {
-        OutputDebugString(L"load model failed!");
-        return -1;
-    }
-    DWORD dwCameraNum = 0;
-    _ReadCameraNumFromRegistry(&dwCameraNum);
-    VideoCapture cap(dwCameraNum, cv::CAP_DSHOW);
-    if (!cap.isOpened())
-    {
-        OutputDebugString(L"failed open camera");
-        return -1;
-    }
-    Mat frame;
-    bool faceDetected = false;
-    int framesWithoutFace = 0;
-    const int maxFramesWithoutFace = 10;        // 连续多少帧未检测到人脸后重置
-    const float minFrontalAspectRatio = 0.7;    // 最小正面宽高比
-    const float maxFrontalAspectRatio = 1.3;    // 最大正面宽高比
-    const int minFaceSize = 90;                // 最小人脸尺寸(像素)
-    const float maxEyeAngleDeviation = 17.0;    // 最大眼睛角度偏差（度）
-    MSG msg;
-
-    DWORD startTime = GetTickCount();   //获取当前时间
-    DWORD timeout = 60000;              //超时时间
-
-    while (true && GetMessage(&msg, NULL, 0, 0))
-    {   
-        if (GetTickCount() - startTime > timeout) {
-            LogMessage(L"Timeout: No face detected in 9 seconds!");
-            cap.release();
-            cv::destroyWindow("Face Detection");
-            return -1;
-        }
-
-        TranslateMessage(&msg);           //获取窗口信息
-        DispatchMessage(&msg);
-
-        if (g_returnClicked)
-        {
-            LogMessage(L"Close camera");
-            cap.release();
-            cv::destroyWindow("Face Detection");
-            return -1;
-        }
-
-        cap >> frame;
-        if (frame.empty()) break;
-
-        // 转换为灰度图像(人脸检测更快)
-        Mat gray;
-        cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
-        cv::equalizeHist(gray, gray); // 增强对比度
-
-        // 检测人脸
-        vector<cv::Rect> faces;
-        faceCascade.detectMultiScale(gray, faces, 1.1, 3, 0, cv::Size(minFaceSize, minFaceSize));
-
-        // 在检测到的人脸周围画矩形
-        for (const auto& face : faces)
-        {
-            if (GetTickCount() - startTime > timeout) {
-                LogMessage(L"Timeout: No face detected in 9 seconds!");
-                cap.release();
-                cv::destroyWindow("Face Detection");
-                return -1;
-            }
-            Mat cleanFaceImage = frame(face).clone();
-
-            // 计算人脸中心位置(用于判断是否面向摄像头)
-            cv::Point faceCenter(face.x + face.width / 2, face.y + face.height / 2);
-            float aspectRatio = (float)face.width / face.height;
-
-            // 检测眼睛（仅在人脸ROI内检测）
-            Mat faceROI = gray(face);
-            vector<cv::Rect> eyes;
-            eyeCascade.detectMultiScale(faceROI, eyes, 1.1, 2, 0, cv::Size(30, 30));
-
-            // 确保检测到两只眼睛
-            bool hasTwoEyes = (eyes.size() >= 2);
-
-            // 计算双眼连线的角度（判断是否水平）
-            float eyeAngle = 0.0;
-            if (hasTwoEyes)
-            {
-                cv::Point eye1(face.x + eyes[0].x + eyes[0].width / 2, face.y + eyes[0].y + eyes[0].height / 2);
-                cv::Point eye2(face.x + eyes[1].x + eyes[1].width / 2, face.y + eyes[1].y + eyes[1].height / 2);
-                eyeAngle = atan2(eye2.y - eye1.y, eye2.x - eye1.x) * (180.0 / CV_PI);
-            }
-
-            // 判断是否为正脸且双眼水平
-            bool isFrontal = aspectRatio > minFrontalAspectRatio &&
-                aspectRatio < maxFrontalAspectRatio&&
-                abs(faceCenter.x - frame.cols / 2) < frame.cols / 4 &&  // 人脸位于画面中央
-                hasTwoEyes &&
-                abs(eyeAngle) < maxEyeAngleDeviation;  // 双眼水平
-
-            //绘画出人脸框
-            Scalar faceColor = isFrontal ? Scalar(0, 255, 0) : Scalar(0, 0, 255);
-            rectangle(frame, face, faceColor, 2);
-
-            if (isFrontal && !faceDetected)
-            {
-
-                // 当检测到正脸时，保存图像
-                faceImage = cleanFaceImage;
-                framesWithoutFace = 0;
-                faceDetected = true;
-                cap.release();
-                cv::destroyWindow("Face Detection");
-                return 0;
-            }
-        }
-        if (faces.empty())
-        {
-            framesWithoutFace++;
-            if (framesWithoutFace > maxFramesWithoutFace)
-            {
-                faceDetected = false;
-            }
-        }
-        //展示摄像头预览，不过只能在注销时显示
-        imshow("Face Detection", frame);
-    }
-    cap.release();
-    cv::destroyWindow("Face Detection");
-    return -1;
-}
-
-//人脸注册
-int FaceRegister(string username) {
-    LogMessage(L"FaceRegister");
-    CascadeClassifier faceCascade, eyeCascade;
-    if (!faceCascade.load("haarcascade_frontalface_default.xml") ||
-        !eyeCascade.load("haarcascade_eye.xml"))
-    {
-        return -1;
-    }
-    DWORD dwCameraNum = 0;
-    _ReadCameraNumFromRegistry(&dwCameraNum);
-    VideoCapture cap(dwCameraNum, cv::CAP_DSHOW);
-    if (!cap.isOpened())
-    {
-        return -1;
-    }
-    Mat frame;
-    bool faceDetected = false;
-    int framesWithoutFace = 0;
-    int frameCount = 0;
-    int maxFrameCount = 3;
-    const int maxFramesWithoutFace = 10;        // 连续多少帧未检测到人脸后重置
-    const float minFrontalAspectRatio = 0.8;    // 最小正面宽高比
-    const float maxFrontalAspectRatio = 1.2;    // 最大正面宽高比
-    const int minFaceSize = 150;                // 最小人脸尺寸(像素)
-    const float maxEyeAngleDeviation = 15.0;    // 最大眼睛角度偏差（度）
-    int iRet = -1;
-    MSG msg;
-
-    DWORD startTime = GetTickCount();   //获取当前时间
-    DWORD timeout = 10000;              //超时时间
-
-    while (true && GetMessage(&msg, NULL, 0, 0))
-    {   
-
-        if (GetTickCount() - startTime > timeout) {
-            LogMessage(L"Timeout: No face detected in 9 seconds!");
-            cap.release();
-            cv::destroyWindow("Face Detection");
-            return -1;
-        }
-
-        TranslateMessage(&msg);           //获取窗口信息
-        DispatchMessage(&msg);
-
-        if (g_returnClicked)
-        {
-            LogMessage(L"Close camera");
-            cap.release();
-            cv::destroyWindow("Face Detection");
-            return -1;
-        }
-
-        cap >> frame;
-        if (frame.empty()) break;
-
-        // 转换为灰度图像(人脸检测更快)
-        Mat gray;
-        cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
-        cv::equalizeHist(gray, gray); // 增强对比度
-
-        // 检测人脸
-        vector<cv::Rect> faces;
-        faceCascade.detectMultiScale(gray, faces, 1.1, 3, 0, cv::Size(minFaceSize, minFaceSize));
-
-        // 在检测到的人脸周围画矩形
-        for (const auto& face : faces)
-        {   
-            if (GetTickCount() - startTime > timeout) {
-                LogMessage(L"Timeout: No face detected in 9 seconds!");
-                cap.release();
-                cv::destroyWindow("Face Detection");
-                return -1;
-            }
-            Mat cleanFaceImage = frame(face).clone();
-
-            // 计算人脸中心位置(用于判断是否面向摄像头)
-            cv::Point faceCenter(face.x + face.width / 2, face.y + face.height / 2);
-            float aspectRatio = (float)face.width / face.height;
-
-            // 检测眼睛（仅在人脸ROI内检测）
-            Mat faceROI = gray(face);
-            vector<cv::Rect> eyes;
-            eyeCascade.detectMultiScale(faceROI, eyes, 1.1, 2, 0, cv::Size(30, 30));
-
-            // 确保检测到两只眼睛
-            bool hasTwoEyes = (eyes.size() >= 2);
-
-            // 计算双眼连线的角度（判断是否水平）
-            float eyeAngle = 0.0;
-            if (hasTwoEyes)
-            {
-                cv::Point eye1(face.x + eyes[0].x + eyes[0].width / 2, face.y + eyes[0].y + eyes[0].height / 2);
-                cv::Point eye2(face.x + eyes[1].x + eyes[1].width / 2, face.y + eyes[1].y + eyes[1].height / 2);
-                eyeAngle = atan2(eye2.y - eye1.y, eye2.x - eye1.x) * (180.0 / CV_PI);
-            }
-
-            // 判断是否为正脸且双眼水平
-            bool isFrontal = aspectRatio > minFrontalAspectRatio &&
-                aspectRatio < maxFrontalAspectRatio&&
-                abs(faceCenter.x - frame.cols / 2) < frame.cols / 4 &&  // 人脸位于画面中央
-                hasTwoEyes &&
-                abs(eyeAngle) < maxEyeAngleDeviation;  // 双眼水平
-
-            Scalar faceColor = isFrontal ? Scalar(0, 255, 0) : Scalar(0, 0, 255);
-            rectangle(frame, face, faceColor, 2);
-
-            if (isFrontal && !faceDetected)
-            {
-
-                // 当检测到正脸时，保存图像
-                cleanFaceImage;
-                framesWithoutFace = 0;
-                faceDetected = true;
-                iRet = HttpsPostWithImageRegister(cleanFaceImage, username);  
-                if (iRet == 0 || iRet == 103)
-                {
-                    cap.release();
-                    cv::destroyWindow("Face Detection");
-                    return 0;
-                }
-                if (iRet == 1) { 
-                    cap.release();
-                    cv::destroyWindow("Face Detection");
-                    return -1;
-                }
-            }
-        }
-        if (faces.empty())
-        {
-            framesWithoutFace++;
-            if (framesWithoutFace > maxFramesWithoutFace)
-            {
-                faceDetected = false;
-            }
-        }
-        imshow("Face Detection", frame);
-    }
-    cap.release();
-    cv::destroyWindow("Face Detection");
-    return -1;
-}
-
-INT IsFaceRegister(string username, string SubAccount, MSG msg, int &authType) {
-    int revalue = -1;
-    int iRet = -1;
-    g_returnClicked = false;
-    revalue = HttpsPostIsRegister(username, SubAccount, authType);
-    LogMessage(L"HttpPostIsRegister respose code:"+stringToWString(std::to_string(revalue)));
-    //用户白名单，直接放行
-    /*
-    if (revalue == 999) { 
-        return revalue; 
-    }
-    if (revalue == 0) {
-        return 1;
-    }
-    if (revalue == 3) {
-        return 3;
-    }
-    else {
-
-        ShowFingerprintPrompt(iRet, false, revalue, false, true);       //展示指纹提取提示框
-        while (revalue != 0 && GetMessage(&msg, NULL, 0, 0)) {
-            TranslateMessage(&msg);           //获取窗口信息
-            DispatchMessage(&msg);
-
-            if (g_returnClicked)
-            {
-                HideFingerprintPrompt();
-                LogMessage(L"Close face register");
-                return revalue;
-            }
-            LogMessage(L"Start face register");
-            revalue = FaceRegister(username);
-
-            if (revalue == 0) {
-                HideFingerprintPrompt();
-                iRet = 0;
-                ShowFingerprintPrompt(iRet, false, revalue, false, true);
-                Sleep(1000);
-                HideFingerprintPrompt();
-                return 1111;
-            }
-            else {
-                revalue = 0;
-            }
-        }
-        HideFingerprintPrompt();
-    }
-    LogMessage(L"Face register failed,return -1");
-    */
-    return revalue;
 }
 
 //窗口过程
