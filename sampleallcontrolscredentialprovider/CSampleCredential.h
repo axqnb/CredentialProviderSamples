@@ -128,12 +128,3 @@ public:
     DWORD                                   _dwComboIndex;                                  // Tracks the current index
                                                                                             // of our combobox.
 };
-
-//检测不到卡片锁屏
-void StartProcesses();                                       //总的调用
-void StartBackgroundProcessL();                              //后台读卡进程
-void StartBackgroundProcessM();                              //后台监控进程
-
-//终止exe程序
-void StopProcesses();
-void StopProcessByName(LPCWSTR processName);
