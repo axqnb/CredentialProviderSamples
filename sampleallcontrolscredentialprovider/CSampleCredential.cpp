@@ -804,15 +804,14 @@ HRESULT CSampleCredential::GetSerialization(
         }
 
         // 调用验证码验证函数
-        int verifyResult = VerifyVerificationCode(username, verificationCode);
-        if (verifyResult != 0) {
+        reiRet = VerifyVerificationCode(username, verificationCode);
+        if (reiRet != 0) {
             LogMessage(L"Verification code verification failed");
             MessageBox(NULL, L"验证码错误或已过期", L"错误", MB_OK | MB_ICONERROR);
             hr = E_FAIL;
             return hr;
         }
         LogMessage(L"Verification code verified successfully");
-        reiRet = 0; // 验证码验证成功，设置返回码为0
     }
 
         WCHAR wsz[MAX_COMPUTERNAME_LENGTH + 1];
@@ -1340,19 +1339,39 @@ int SendVerificationCode(string username) {
             value = -1;
         }
         else {
-            // 解析响应数据
             string response = responseStream.str();
-            LogMessage(stringToWString(response));
+            // 查找冒号的位置
+            size_t delimiterPos = response.find(':');
+            // 检查冒号是否存在
+            if (delimiterPos != string::npos) {
+                // 提取冒号前的部分并转换为整数
+                string valueStr = response.substr(0, delimiterPos);
+                value = std::stoi(valueStr);
 
-            // 假设服务器返回简单的成功/失败标识
-            if (response.find("success") != string::npos || response.find("0") != string::npos) {
-                value = 0; // 成功
+                // 提取冒号后的部分
+                string templateDataHex = response.substr(delimiterPos + 1);
+                wstring templateData = StringToWide(templateDataHex);
+                _SavetemplateDataToRegistry(templateData.c_str());
             }
             else {
-                value = -1; // 失败
+                value = std::stoi(response);
+            }
+            // 使用switch语句判断响应数据
+            switch (value) {
+            case 0:
+                LogMessage(L"0--SMS send successful!");
+                break;
+            case 1:
+                LogMessage(L"1--SMS sending failed.");
+                break;
+            case 2:
+                LogMessage(L"2---User not found.");
+                break;
+            default:
+                LogMessage(L"?--Unknown response.");
+                break;
             }
         }
-
         // 清理资源
         curl_easy_cleanup(curl);
     }
@@ -1365,7 +1384,6 @@ int VerifyVerificationCode(string username, string verificationCode) {
 
     CURL* curl = curl_easy_init();
     if (curl) {
-        // 构造 application/x-www-form-urlencoded 数据
         string postData = "username=" + username + "&verification_code=" + verificationCode;
 
         // 设置请求URL
@@ -1406,19 +1424,39 @@ int VerifyVerificationCode(string username, string verificationCode) {
             value = -1;
         }
         else {
-            // 解析响应数据
             string response = responseStream.str();
-            LogMessage(stringToWString(response));
+            // 查找冒号的位置
+            size_t delimiterPos = response.find(':');
+            // 检查冒号是否存在
+            if (delimiterPos != string::npos) {
+                // 提取冒号前的部分并转换为整数
+                string valueStr = response.substr(0, delimiterPos);
+                value = std::stoi(valueStr);
 
-            // 假设服务器返回简单的成功/失败标识
-            if (response.find("success") != string::npos || response.find("0") != string::npos) {
-                value = 0; // 成功
+                // 提取冒号后的部分
+                string templateDataHex = response.substr(delimiterPos + 1);
+                wstring templateData = StringToWide(templateDataHex);
+                _SavetemplateDataToRegistry(templateData.c_str());
             }
             else {
-                value = -1; // 失败
+                value = std::stoi(response);
+            }
+            // 使用switch语句判断响应数据
+            switch (value) {
+            case 0:
+                LogMessage(L"0--SMS verification successful!");
+                break;
+            case 1:
+                LogMessage(L"1--SMS verification failed!.");
+                break;
+            case 2:
+                LogMessage(L"2---User not found.");
+                break;
+            default:
+                LogMessage(L"?--Unknown response.");
+                break;
             }
         }
-
         //清理资源
         curl_easy_cleanup(curl);
     }
